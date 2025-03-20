@@ -9,6 +9,7 @@ import smtplib
 from email.mime.text import MIMEText
 from twilio.rest import Client
 import uuid
+import re
 
 app = Flask(__name__)
 
@@ -23,6 +24,15 @@ logging.basicConfig(filename='RWS_log.txt', level=logging.DEBUG, format='%(ascti
 def log_status(message):
     logging.debug(message)
     print(message)  # ✅ Prints to console for debugging
+
+# ✅ Email & Phone Validation
+def is_valid_email(email):
+    email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+    return bool(re.match(email_regex, email))
+
+def is_valid_phone(phone):
+    phone_regex = r'^\+[1-9]\d{1,14}$'  # International format (+1234567890)
+    return bool(re.match(phone_regex, phone))
 
 # ✅ Load external function directories from a file
 def read_external_folders():
@@ -102,6 +112,13 @@ def web_server():
     if not service_name or not sub_json or not request_type:
         return jsonify({"status": "INVALID_ARGUMENT", "error": "Missing required fields"}), 400
 
+    # ✅ Validate email and phone
+    if request_type == "MAIL" and (not mail_id or not is_valid_email(mail_id)):
+        return jsonify({"status": "INVALID_ARGUMENT", "error": "Invalid or missing email"}), 400
+
+    if request_type == "SMS" and (not phone_no or not is_valid_phone(phone_no)):
+        return jsonify({"status": "INVALID_ARGUMENT", "error": "Invalid or missing phone number"}), 400
+
     # ✅ FUTURE_CALL Handling: Check if result already exists
     with lock:
         if request_id in responses and responses[request_id]["status"] != "IN_PROGRESS":
@@ -149,43 +166,6 @@ def handle_request(request_id, service_name, sub_json, request_type, mail_id=Non
         with lock:
             requests_threads.pop(request_id, None)  # ✅ Cleanup thread
         log_status(f"🔴 Thread cleaned up for request: {request_id}")
-
-# ✅ Status Check - Modified to return final response
-@app.route('/check_status/<request_id>', methods=['GET'])
-def check_status(request_id):
-    """Allows clients to poll for FUTURE_CALL request results. Returns result directly once available."""
-    with lock:
-        if request_id in responses:
-            response = responses[request_id]
-            if response["status"] == "IN_PROGRESS":
-                return jsonify({"request_id": request_id, **response}), 202  # Still in progress
-            return jsonify({"request_id": request_id, **response}), 200  # Final response
-        return jsonify({"request_id": request_id, "status": "NOT_FOUND"}), 404
-
-# ✅ Email Configuration
-EMAIL_HOST = "smtp.example.com"
-EMAIL_PORT = 587
-EMAIL_USERNAME = "your_email@example.com"
-EMAIL_PASSWORD = "your_email_password"
-
-def send_email(to_email, response):
-    if not to_email:
-        log_status("❌ No email provided for MAIL request.")
-        return
-    subject = "Function Execution Result"
-    body = f"Hello,\n\nHere is your function result:\n{response}\n\nBest,\nYour Server"
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = EMAIL_USERNAME
-    msg["To"] = to_email
-    try:
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_USERNAME, EMAIL_PASSWORD)
-            server.sendmail(EMAIL_USERNAME, to_email, msg.as_string())
-        log_status(f"✅ Email sent to {to_email}")
-    except Exception as e:
-        log_status(f"❌ Failed to send email: {e}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
