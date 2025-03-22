@@ -5,11 +5,18 @@ import os
 import importlib.util
 import sys
 import traceback
+import uuid
+import re
+import argparse
 import smtplib
 from email.mime.text import MIMEText
 from twilio.rest import Client
-import uuid
-import re
+
+# ✅ Parse command-line arguments
+parser = argparse.ArgumentParser(description="Flask Server with Multiple External Folders")
+parser.add_argument("port", type=int, help="Port number to run the server")
+parser.add_argument("config_file", type=str, help="Path to the configuration file")
+args = parser.parse_args()
 
 app = Flask(__name__)
 
@@ -19,38 +26,36 @@ function_map = {}  # Stores loaded functions
 lock = threading.Lock()  # Thread safety lock
 
 # ✅ Logging setup
-logging.basicConfig(filename='RWS_log.txt', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename=f'RWS_log_{args.port}.txt', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def log_status(message):
     logging.debug(message)
-    print(message)  # ✅ Prints to console for debugging
+    print(message)
 
-# ✅ Email & Phone Validation
-def is_valid_email(email):
-    email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-    return bool(re.match(email_regex, email))
+# ✅ Read external folder paths from the configuration file
+def read_external_folders(config_file):
+    if not os.path.exists(config_file):
+        log_status(f"❌ Error: Configuration file '{config_file}' not found.")
+        exit(1)
 
-def is_valid_phone(phone):
-    phone_regex = r'^\+[1-9]\d{1,14}$'  # International format (+1234567890)
-    return bool(re.match(phone_regex, phone))
-
-# ✅ Load external function directories from a file
-def read_external_folders():
-    path_file = os.path.join(os.path.dirname(__file__), 'external_paths.txt')
     valid_paths = []
-    if os.path.exists(path_file):
-        with open(path_file, 'r') as file:
-            for line in file:
-                folder_path = line.strip()
-                if os.path.exists(folder_path) and os.path.isdir(folder_path):
-                    valid_paths.append(folder_path)
-                else:
-                    log_status(f"⚠️ Invalid path: {folder_path}")
+    with open(config_file, "r") as file:
+        for line in file:
+            folder_path = line.strip()
+            if os.path.exists(folder_path) and os.path.isdir(folder_path):
+                valid_paths.append(folder_path)
+            else:
+                log_status(f"⚠️ Invalid path in config file: {folder_path}")
+
+    if not valid_paths:
+        log_status("❌ Error: No valid external folders found in configuration file.")
+        exit(1)
+
     return valid_paths
 
-EXTERNAL_FOLDERS = read_external_folders()
+EXTERNAL_FOLDERS = read_external_folders(args.config_file)
 
-# ✅ Preload functions from external Python files
+# ✅ Load functions from external Python files
 def preload_functions():
     def load_functions_from_directory(directory):
         for root, _, files in os.walk(directory):  
@@ -71,17 +76,14 @@ def preload_functions():
                         log_status(f"⚠️ Error loading module {module_name}: {traceback.format_exc()}")
 
     for folder in EXTERNAL_FOLDERS:
-        if os.path.exists(folder):
-            log_status(f"🔍 Scanning folder: {folder}")
-            load_functions_from_directory(folder)
+        log_status(f"🔍 Scanning folder: {folder}")
+        load_functions_from_directory(folder)
 
 preload_functions()
 
 # ✅ Function Execution
 def process_request(service_name, sub_json):
     log_status(f"🛠️ Processing function '{service_name}' with input: {sub_json}")
-    log_status(f"📌 Available functions: {list(function_map.keys())}")
-
     if service_name in function_map:
         try:
             result = function_map[service_name](**sub_json)
@@ -90,14 +92,12 @@ def process_request(service_name, sub_json):
         except Exception:
             log_status(f"❌ Error executing function '{service_name}': {traceback.format_exc()}")
             return {"status": "ERROR", "error_reason": "FUNCTION_EXECUTION_ERROR"}
-    
     log_status(f"⚠️ Function '{service_name}' not found.")
     return {"status": "ERROR", "error_reason": "FUNCTION_NOT_FOUND"}
 
 # ✅ Main API Endpoint
 @app.route('/web_server', methods=['POST'])
 def web_server():
-    """Handles incoming requests."""
     data = request.get_json(silent=True)
     if not data or not isinstance(data, dict):
         return jsonify({"status": "INVALID_ARGUMENT", "error": "Invalid JSON format"}), 400
@@ -112,17 +112,11 @@ def web_server():
     if not service_name or not sub_json or not request_type:
         return jsonify({"status": "INVALID_ARGUMENT", "error": "Missing required fields"}), 400
 
-    # ✅ Validate email and phone
-    if request_type == "MAIL" and (not mail_id or not is_valid_email(mail_id)):
-        return jsonify({"status": "INVALID_ARGUMENT", "error": "Invalid or missing email"}), 400
-
-    if request_type == "SMS" and (not phone_no or not is_valid_phone(phone_no)):
-        return jsonify({"status": "INVALID_ARGUMENT", "error": "Invalid or missing phone number"}), 400
-
-    # ✅ FUTURE_CALL Handling: Check if result already exists
     with lock:
         if request_id in responses and responses[request_id]["status"] != "IN_PROGRESS":
-            return jsonify({"request_id": request_id, **responses[request_id]}), 200  # Return stored response
+            return jsonify({"request_id": request_id, **responses[request_id]}), 200
+        if request_id in requests_threads:
+            return jsonify({"status": "IN_PROGRESS", "request_id": request_id}), 202
 
     if request_type == "INLINE":
         response = process_request(service_name, sub_json)
@@ -130,42 +124,31 @@ def web_server():
 
     with lock:
         responses[request_id] = {"status": "IN_PROGRESS"}
-
-    # ✅ Start background thread
     thread = threading.Thread(target=handle_request, args=(request_id, service_name, sub_json, request_type, mail_id, phone_no), daemon=True)
     thread.start()
-
     with lock:
         requests_threads[request_id] = thread
 
-    log_status(f"🟢 Started thread for request: {request_id}")
     return jsonify({"status": "IN_PROGRESS", "request_id": request_id}), 202
 
 # ✅ Handle Asynchronous Requests
 def handle_request(request_id, service_name, sub_json, request_type, mail_id=None, phone_no=None):
-    """Handles execution of FUTURE_CALL requests asynchronously."""
-    log_status(f"🚀 Executing handle_request for request_id: {request_id}")
-
     try:
         response = process_request(service_name, sub_json)
         with lock:
-            responses[request_id] = response  # ✅ Store result for FUTURE_CALL
-            log_status(f"✅ Request {request_id} completed with response: {response}")
-
+            responses[request_id] = response  
+            requests_threads.pop(request_id, None)
         if request_type == "MAIL" and mail_id:
             send_email(mail_id, response)
         elif request_type == "SMS" and phone_no:
             send_sms(phone_no, response)
-
-    except Exception:
-        log_status(f"❌ Error handling request '{request_id}': {traceback.format_exc()}")
+    except Exception as e:
         with lock:
-            responses[request_id] = {"status": "ERROR", "error_reason": "FUNCTION_EXECUTION_ERROR"}
-
+            responses[request_id] = {"status": "ERROR", "error_reason": str(e)}
     finally:
         with lock:
-            requests_threads.pop(request_id, None)  # ✅ Cleanup thread
-        log_status(f"🔴 Thread cleaned up for request: {request_id}")
+            requests_threads.pop(request_id, None)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    log_status(f"🚀 Starting server on port {args.port} with external folders: {EXTERNAL_FOLDERS}")
+    app.run(host='0.0.0.0', port=args.port, debug=True)
