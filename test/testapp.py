@@ -1,8 +1,9 @@
+    
 import requests
 import json
 
 # ✅ Update SERVER_URL based on the Flask server's expected format
-SERVER_URL = "http://127.0.0.1:{port}/web_server"  # Port will be provided dynamically
+SERVER_URL = "http://{ip}:{port}/web_server"  # IP and Port will be provided dynamically
 
 def safe_int_input(prompt):
     while True:
@@ -20,9 +21,9 @@ DEFAULT_PARAMS = {
     "div": lambda: {"a": safe_int_input("  ➤ Enter numerator (a): "), "b": safe_int_input("  ➤ Enter denominator (b): ")}
 }
 
-def send_request(port, service, req_type, params, email=None, phone=None):
+def send_request(ip, port, service, req_type, params, email=None, phone=None):
     """Send request to the server and handle FUTURE_CALL polling."""
-    url = SERVER_URL.format(port=port)
+    url = SERVER_URL.format(ip=ip, port=port)
     payload = {
         "service_name": service,
         "sub_json": params,
@@ -41,14 +42,14 @@ def send_request(port, service, req_type, params, email=None, phone=None):
         if req_type == "FUTURE_CALL" and response_json.get("status") == "IN_PROGRESS":
             request_id = response_json.get("request_id")
             print(f"🔄 Request ID {request_id} is processing. Checking for results...")
-            check_future_call_result(port, request_id, service, params)
+            check_future_call_result(ip, port, request_id, service, params)
     
     except requests.exceptions.RequestException as e:
         print("\n⚠️ Error:", e)
 
-def check_future_call_result(port, request_id, service_name, sub_json):
+def check_future_call_result(ip, port, request_id, service_name, sub_json):
     """Poll the server for FUTURE_CALL result until it's ready."""
-    url = SERVER_URL.format(port=port)
+    url = SERVER_URL.format(ip=ip, port=port)
     while True:
         try:
             payload = {
@@ -77,6 +78,7 @@ def check_future_call_result(port, request_id, service_name, sub_json):
 
 def main():
     """Client menu for sending requests."""
+    ip = input("🔹 Enter server IP address: ").strip()
     port = input("🔹 Enter server port: ").strip()
     if not port.isdigit():
         print("⚠️ Invalid port! Please enter a valid number.")
@@ -109,7 +111,7 @@ def main():
                 if not phone:
                     print("⚠️ Phone number is required for SMS requests!")
         
-        send_request(port, service, req_type, params, email, phone)
+        send_request(ip, port, service, req_type, params, email, phone)
 
 if __name__ == "__main__":
     main()

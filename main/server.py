@@ -6,7 +6,6 @@ import importlib.util
 import sys
 import traceback
 import uuid
-import re
 import argparse
 import smtplib
 from email.mime.text import MIMEText
@@ -41,7 +40,7 @@ def read_external_folders(config_file):
     valid_paths = []
     with open(config_file, "r") as file:
         for line in file:
-            folder_path = line.strip()
+            folder_path = os.path.abspath(line.strip())  # Convert to absolute path
             if os.path.exists(folder_path) and os.path.isdir(folder_path):
                 valid_paths.append(folder_path)
             else:
@@ -89,11 +88,30 @@ def process_request(service_name, sub_json):
             result = function_map[service_name](**sub_json)
             log_status(f"✅ Function '{service_name}' executed successfully. Result: {result}")
             return {"status": "SUCCESS", "data": result}
-        except Exception:
+        except Exception as e:
+            error_message = str(e)
             log_status(f"❌ Error executing function '{service_name}': {traceback.format_exc()}")
-            return {"status": "ERROR", "error_reason": "FUNCTION_EXECUTION_ERROR"}
+            return {"status": "ERROR", "error_reason": "FUNCTION_EXECUTION_ERROR", "details": error_message}
     log_status(f"⚠️ Function '{service_name}' not found.")
     return {"status": "ERROR", "error_reason": "FUNCTION_NOT_FOUND"}
+
+# ✅ Handle Asynchronous Requests
+def handle_request(request_id, service_name, sub_json, request_type, mail_id=None, phone_no=None):
+    try:
+        response = process_request(service_name, sub_json)
+        with lock:
+            responses[request_id] = response  
+        if request_type == "MAIL" and mail_id:
+            send_email(mail_id, response)
+        elif request_type == "SMS" and phone_no:
+            send_sms(phone_no, response)
+    except Exception as e:
+        with lock:
+            responses[request_id] = {"status": "ERROR", "error_reason": str(e)}
+    finally:
+        with lock:
+            if request_id in requests_threads:
+                del requests_threads[request_id]
 
 # ✅ Main API Endpoint
 @app.route('/web_server', methods=['POST'])
@@ -131,24 +149,6 @@ def web_server():
 
     return jsonify({"status": "IN_PROGRESS", "request_id": request_id}), 202
 
-# ✅ Handle Asynchronous Requests
-def handle_request(request_id, service_name, sub_json, request_type, mail_id=None, phone_no=None):
-    try:
-        response = process_request(service_name, sub_json)
-        with lock:
-            responses[request_id] = response  
-            requests_threads.pop(request_id, None)
-        if request_type == "MAIL" and mail_id:
-            send_email(mail_id, response)
-        elif request_type == "SMS" and phone_no:
-            send_sms(phone_no, response)
-    except Exception as e:
-        with lock:
-            responses[request_id] = {"status": "ERROR", "error_reason": str(e)}
-    finally:
-        with lock:
-            requests_threads.pop(request_id, None)
-
 if __name__ == '__main__':
     log_status(f"🚀 Starting server on port {args.port} with external folders: {EXTERNAL_FOLDERS}")
-    app.run(host='0.0.0.0', port=args.port, debug=True)
+    app.run(host='0.0.0.0', port=args.port, debug=False)  # Set debug to False for production
