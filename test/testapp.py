@@ -1,9 +1,5 @@
-    
 import requests
 import json
-
-# ✅ Update SERVER_URL based on the Flask server's expected format
-SERVER_URL = "http://{ip}:{port}/web_server"  # IP and Port will be provided dynamically
 
 def safe_int_input(prompt):
     while True:
@@ -12,38 +8,60 @@ def safe_int_input(prompt):
         except ValueError:
             print("⚠️ Invalid input! Please enter a valid integer.")
 
-DEFAULT_PARAMS = {
-    "sp": lambda: {"symbol": input("  ➤ Enter stock symbol: ").strip().upper()},
-    "pc": lambda: {"symbol": input("  ➤ Enter stock symbol: ").strip().upper()},
-    "add": lambda: {"a": safe_int_input("  ➤ Enter first number (a): "), "b": safe_int_input("  ➤ Enter second number (b): ")},
-    "sub": lambda: {"a": safe_int_input("  ➤ Enter first number (a): "), "b": safe_int_input("  ➤ Enter second number (b): ")},
-    "mul": lambda: {"a": safe_int_input("  ➤ Enter first number (a): "), "b": safe_int_input("  ➤ Enter second number (b): ")},
-    "div": lambda: {"a": safe_int_input("  ➤ Enter numerator (a): "), "b": safe_int_input("  ➤ Enter denominator (b): ")}
-}
+SERVER_URL = "http://{ip}:{port}/web_server"  # IP and Port will be provided dynamically
 
-def send_request(ip, port, service, req_type, params, email=None, phone=None):
+def send_request(ip, port, user_json):
     """Send request to the server and handle FUTURE_CALL polling."""
     url = SERVER_URL.format(ip=ip, port=port)
-    payload = {
-        "service_name": service,
-        "sub_json": params,
-        "request_type": req_type
-    }
-    if email:
-        payload["mail_id"] = email
-    if phone:
-        payload["phone_no"] = phone
     
     try:
+        payload = json.loads(user_json)
+        
+        # Normalize request type to uppercase
+        if "request_type" in payload:
+            payload["request_type"] = payload["request_type"].strip().upper()
+        else:
+            print("⚠️ Missing 'request_type'! Request aborted.")
+            return
+        
+        # Validate request type
+        if payload["request_type"] not in {"INLINE", "FUTURE_CALL", "MAIL", "SMS"}:
+            print(f"⚠️ Invalid request type '{payload['request_type']}'! Request aborted.")
+            return
+        
+        # Ensure function name is case insensitive
+        if "service_name" in payload:
+            payload["service_name"] = payload["service_name"].lower()
+        
+        # Ensure email is provided for MAIL request
+        if payload["request_type"] == "MAIL":
+            if "mail_id" not in payload or not payload["mail_id"].strip():
+                while True:
+                    payload["mail_id"] = input("🔹 Enter Email for MAIL request: ").strip()
+                    if payload["mail_id"]:
+                        break
+                    print("⚠️ Email is required for MAIL requests!")
+        
+        # Ensure phone number is provided for SMS request
+        if payload["request_type"] == "SMS":
+            if "phone_no" not in payload or not payload["phone_no"].strip():
+                while True:
+                    payload["phone_no"] = input("🔹 Enter Phone Number for SMS request: ").strip()
+                    if payload["phone_no"]:
+                        break
+                    print("⚠️ Phone number is required for SMS requests!")
+        
         response = requests.post(url, json=payload)
         response_json = response.json()
         print("\n✅ Response:", json.dumps(response_json, indent=4))
         
-        if req_type == "FUTURE_CALL" and response_json.get("status") == "IN_PROGRESS":
+        if payload.get("request_type") == "FUTURE_CALL" and response_json.get("status") == "IN_PROGRESS":
             request_id = response_json.get("request_id")
             print(f"🔄 Request ID {request_id} is processing. Checking for results...")
-            check_future_call_result(ip, port, request_id, service, params)
+            check_future_call_result(ip, port, request_id, payload["service_name"], payload["sub_json"])
     
+    except json.JSONDecodeError:
+        print("⚠️ Invalid JSON format! Please provide valid JSON.")
     except requests.exceptions.RequestException as e:
         print("\n⚠️ Error:", e)
 
@@ -86,32 +104,13 @@ def main():
     port = int(port)
     
     while True:
-        req_type = input("\n🔹 Request type (INLINE, FUTURE_CALL, MAIL, SMS): ").strip().upper()
-        if req_type not in {"INLINE", "FUTURE_CALL", "MAIL", "SMS"}:
-            print("⚠️ Invalid request type! Try again.")
+        print("\n🔹 Enter your request JSON format:")
+        print('{"request_type": "INLINE/FUTURE_CALL/MAIL/SMS", "service_name": "add/sp/...", "sub_json": {...}}')
+        user_json = input("🔹 Enter JSON request: ").strip()
+        if not user_json:
+            print("⚠️ No input provided! Please enter a valid JSON request.")
             continue
-        
-        service = input("🔹 Function name (add, sub, mul, div, sp, pc): ").strip()
-        if service not in DEFAULT_PARAMS:
-            print("⚠️ Invalid function name! Try again.")
-            continue
-        
-        params = DEFAULT_PARAMS[service]()
-        email, phone = None, None
-        
-        if req_type == "MAIL":
-            while not email:
-                email = input("🔹 Email (required for MAIL): ").strip()
-                if not email:
-                    print("⚠️ Email is required for MAIL requests!")
-        
-        if req_type == "SMS":
-            while not phone:
-                phone = input("🔹 Phone (required for SMS): ").strip()
-                if not phone:
-                    print("⚠️ Phone number is required for SMS requests!")
-        
-        send_request(ip, port, service, req_type, params, email, phone)
+        send_request(ip, port, user_json)
 
 if __name__ == "__main__":
     main()
