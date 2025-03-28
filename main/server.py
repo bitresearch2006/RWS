@@ -117,7 +117,9 @@ def handle_request(request_id, service_name, sub_json, request_type, mail_id=Non
 @app.route('/web_server', methods=['POST'])
 def web_server():
     data = request.get_json(silent=True)
-    if not data or not isinstance(data, dict):
+    if not data:
+        return jsonify({"status": "INVALID_ARGUMENT", "error": "Invalid JSON format"}), 400
+    if not isinstance(data, dict):
         return jsonify({"status": "INVALID_ARGUMENT", "error": "Invalid JSON format"}), 400
 
     request_id = data.get("request_id", str(uuid.uuid4()))
