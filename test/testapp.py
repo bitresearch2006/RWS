@@ -1,5 +1,9 @@
 import requests
 import json
+import subprocess
+import threading
+import time
+
 
 def safe_int_input(prompt):
     while True:
@@ -93,6 +97,9 @@ def check_future_call_result(ip, port, request_id, service_name, sub_json):
         
         import time
         time.sleep(5)
+        
+def call_subprocess(args):
+    subprocess.run(['python', '../main/server.py'] + args )       
 
 def main():
     """Client menu for sending requests."""
@@ -113,4 +120,10 @@ def main():
         send_request(ip, port, user_json)
 
 if __name__ == "__main__":
+    args = ['--diagnostics', '5000', '../test/stub/services_path.txt']
+    thread = threading.Thread(target=call_subprocess, args=(args,))
+    thread.start()
+    time.sleep(5)
     main()
+    thread.join()   # Wait for the subprocess to complete if needed
+

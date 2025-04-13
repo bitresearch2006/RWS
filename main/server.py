@@ -15,6 +15,7 @@ from twilio.rest import Client
 parser = argparse.ArgumentParser(description="Flask Server with Multiple External Folders")
 parser.add_argument("port", type=int, help="Port number to run the server")
 parser.add_argument("config_file", type=str, help="Path to the configuration file")
+parser.add_argument("--diagnostics", action="store_true", help="Enable diagnostics logging")
 args = parser.parse_args()
 
 app = Flask(__name__)
@@ -25,32 +26,38 @@ function_map = {}  # Stores loaded functions
 lock = threading.Lock()  # Thread safety lock
 
 # ✅ Logging setup
-logging.basicConfig(filename=f'RWS_log_{args.port}.txt', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+if args.diagnostics:
+    logging.basicConfig(filename=f'RWS_log_{args.port}.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def log_status(message):
-    logging.debug(message)
-    print(message)
+    if args.diagnostics:
+        logging.debug(message)
+        print(message)
 
 # ✅ Read external folder paths from the configuration file
 def read_external_folders(config_file):
-    if not os.path.exists(config_file):
-        log_status(f"❌ Error: Configuration file '{config_file}' not found.")
+    try:
+        if not os.path.exists(config_file):
+            log_status(f"❌ Error: Configuration file '{config_file}' not found.")
+            exit(1)
+
+        valid_paths = []
+        with open(config_file, "r") as file:
+            for line in file:
+                folder_path = os.path.abspath(line.strip())  # Convert to absolute path
+                if os.path.exists(folder_path) and os.path.isdir(folder_path):
+                    valid_paths.append(folder_path)
+                else:
+                    log_status(f"⚠️ Invalid path in config file: {folder_path}")
+
+        if not valid_paths:
+            log_status(f"❌ Error: No valid external folders found in configuration file.")
+            exit(1)
+
+        return valid_paths
+    except Exception as e:
+        log_status(f"❌ Error reading configuration file: {str(e)}")
         exit(1)
-
-    valid_paths = []
-    with open(config_file, "r") as file:
-        for line in file:
-            folder_path = os.path.abspath(line.strip())  # Convert to absolute path
-            if os.path.exists(folder_path) and os.path.isdir(folder_path):
-                valid_paths.append(folder_path)
-            else:
-                log_status(f"⚠️ Invalid path in config file: {folder_path}")
-
-    if not valid_paths:
-        log_status("❌ Error: No valid external folders found in configuration file.")
-        exit(1)
-
-    return valid_paths
 
 EXTERNAL_FOLDERS = read_external_folders(args.config_file)
 
@@ -153,4 +160,4 @@ def web_server():
 
 if __name__ == '__main__':
     log_status(f"🚀 Starting server on port {args.port} with external folders: {EXTERNAL_FOLDERS}")
-    app.run(host='0.0.0.0', port=args.port, debug=False)  # Set debug to False for production
+    app.run(host='0.0.0.0', port=args.port, debug=args.diagnostics)  # Set debug based on diagnostics
