@@ -1,0 +1,9 @@
+[Unit]
+Description=Remote web server for bridging the micro services
+
+[Service]
+ExecStart=/bin/bash -c 'source /home/bitresearch/platform/py_env/bin/activate && exec python3 /home/bitresearch/platform/RWS/main/server.py 5000 /home/bitresearch/platform/micro_services_path/main/object_detection.txt'
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
