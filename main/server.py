@@ -10,13 +10,17 @@ import argparse
 import smtplib
 from email.mime.text import MIMEText
 from twilio.rest import Client
+import sqlite3  # Ensure sqlite3 is imported
 
 # ✅ Parse command-line arguments
 parser = argparse.ArgumentParser(description="Flask Server with Multiple External Folders")
 parser.add_argument("port", type=int, help="Port number to run the server")
 parser.add_argument("config_file", type=str, help="Path to the configuration file")
+parser.add_argument("database_path", type=str, help="Path to the SQLite database file")  # New argument for database path
 parser.add_argument("--diagnostics", action="store_true", help="Enable diagnostics logging")
 args = parser.parse_args()
+
+DATABASE_PATH = args.database_path  # Set DATABASE_PATH from command-line argument
 
 app = Flask(__name__)
 
@@ -120,6 +124,19 @@ def handle_request(request_id, service_name, sub_json, request_type, mail_id=Non
             if request_id in requests_threads:
                 del requests_threads[request_id]
 
+def is_api_key_valid(api_key):
+    # Connect to the database and check if the API key exists
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM api_keys WHERE api_key = ?", (api_key,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"Database error: {str(e)}")
+        return False
+
 # ✅ Main API Endpoint
 @app.route('/web_server', methods=['POST'])
 def web_server():
@@ -128,6 +145,11 @@ def web_server():
         return jsonify({"status": "INVALID_ARGUMENT", "error": "Invalid JSON format"}), 400
     if not isinstance(data, dict):
         return jsonify({"status": "INVALID_ARGUMENT", "error": "Invalid JSON format"}), 400
+
+    api_key = data.get("X-API-Key")
+
+    if not api_key or not is_api_key_valid(api_key):
+        return jsonify({"status": "UNAUTHORIZED", "error": "Invalid or missing API key"}), 401
 
     request_id = data.get("request_id", str(uuid.uuid4()))
     service_name = data.get("service_name")
