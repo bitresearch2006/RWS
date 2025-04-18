@@ -14,13 +14,14 @@ def safe_int_input(prompt):
 
 SERVER_URL = "http://{ip}:{port}/web_server"  # IP and Port will be provided dynamically
 
-def send_request(ip, port, user_json):
+def send_request(ip, port, user_json, api_key):
     """Send request to the server and handle FUTURE_CALL polling."""
     url = SERVER_URL.format(ip=ip, port=port)
     
     try:
         payload = json.loads(user_json)
         
+        payload["X-API-Key"]= api_key  # Use API key
         # Normalize request type to uppercase
         if "request_type" in payload:
             payload["request_type"] = payload["request_type"].strip().upper()
@@ -110,6 +111,8 @@ def main():
         return
     port = int(port)
     
+    api_key = input("🔹 Enter your API key: ").strip()
+    
     while True:
         print("\n🔹 Enter your request JSON format:")
         print('{"request_type": "INLINE/FUTURE_CALL/MAIL/SMS", "service_name": "add/sp/...", "sub_json": {...}}')
@@ -117,10 +120,10 @@ def main():
         if not user_json:
             print("⚠️ No input provided! Please enter a valid JSON request.")
             continue
-        send_request(ip, port, user_json)
+        send_request(ip, port, user_json, api_key)
 
 if __name__ == "__main__":
-    args = ['--diagnostics', '5000', '../test/stub/services_path.txt']
+    args = ['--diagnostics', '5000', '../test/stub/services_path.txt','../test/stub/api_database.db']
     thread = threading.Thread(target=call_subprocess, args=(args,))
     thread.start()
     time.sleep(5)
