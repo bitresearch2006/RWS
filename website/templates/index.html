@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>My GitHub Services</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #e0eafc, #cfdef3);
+      overflow-x: hidden;
+      position: relative;
+      min-height: 100vh;
+    }
+
+    .bubbles {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      top: 0;
+      left: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .bubble {
+      position: absolute;
+      background-color: rgba(255, 255, 255, 0.15);
+      border-radius: 50%;
+      animation: floatUp 20s infinite ease-in;
+    }
+
+    @keyframes floatUp {
+      0% { transform: translateY(100vh) scale(0.8); opacity: 0; }
+      50% { opacity: 0.5; }
+      100% { transform: translateY(-200px) scale(1.2); opacity: 0; }
+    }
+
+    header {
+      background-color: rgba(36, 41, 46, 0.95);
+      padding: 30px;
+      text-align: center;
+      color: white;
+      font-size: 32px;
+      font-weight: 600;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+      position: relative;
+      z-index: 2;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 0 20px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .search-box {
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .search-box input {
+      width: 100%;
+      max-width: 400px;
+      padding: 12px 16px;
+      font-size: 16px;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+      outline: none;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+      transition: border-color 0.3s ease;
+    }
+
+    .search-box input:focus {
+      border-color: #28a745;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 30px;
+    }
+
+    .card {
+      background: linear-gradient(145deg, #ffffff, #f0f0f0);
+      border-radius: 16px;
+      padding: 30px 20px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 20px;
+      color: #24292e;
+      text-decoration: none;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
+    }
+
+    .card:hover {
+      border-color: #28a745;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15);
+      transform: scale(1.03);
+      background: linear-gradient(145deg, #d0e7ff, #e5f2ff);
+      color: #28a745;
+    }
+
+    .no-services {
+      text-align: center;
+      font-size: 20px;
+      color: #555;
+      margin-top: 50px;
+    }
+
+    @media (max-width: 600px) {
+      header {
+        font-size: 24px;
+        padding: 20px;
+      }
+
+      .card {
+        font-size: 18px;
+        padding: 20px 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Animated Background Bubbles -->
+<div class="bubbles">
+  {% for i in range(20) %}
+    <div class="bubble" style="
+      left: {{ loop.index0 * 5 + (loop.index0 * 2) }}%;
+      width: {{ 20 + (loop.index0 % 5) * 5 }}px;
+      height: {{ 20 + (loop.index0 % 5) * 5 }}px;
+      animation-delay: -{{ loop.index0 * 1.2 }}s;
+    "></div>
+  {% endfor %}
+</div>
+
+<header>
+  🚀 Our Services
+</header>
+
+<div class="container">
+
+  <!-- Search Input -->
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Search services...">
+  </div>
+
+  {% if services %}
+    <div class="grid" id="serviceGrid">
+      {% for service in services %}
+        <a href="/service/{{ service }}" class="card">{{ service }}</a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="no-services">No services found. 🛠️</div>
+  {% endif %}
+</div>
+
+<script>
+  const searchInput = document.getElementById('searchInput');
+  const cards = document.querySelectorAll('.card');
+
+  searchInput.addEventListener('input', function () {
+    const filter = searchInput.value.toLowerCase();
+    cards.forEach(card => {
+      const text = card.textContent.toLowerCase();
+      card.style.display = text.includes(filter) ? 'block' : 'none';
+    });
+  });
+</script>
+
+</body>
+</html>
