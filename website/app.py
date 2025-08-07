@@ -40,4 +40,9 @@ app.register_blueprint(google_bp, url_prefix="/login")
 
 # Run the app
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(
+        debug=True,
+        ssl_context=("cert/cert.pem", "cert/key.pem"),  # 👈 Enable HTTPS locally
+        host="127.0.0.1",
+        port=5000
+    )
