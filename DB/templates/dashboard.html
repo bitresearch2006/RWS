@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card shadow p-4">
+      <h2 class="mb-4">Welcome to Your Dashboard</h2>
+      <p><strong>Email:</strong> {{ email }}</p>
+      <p><strong>Your API Key:</strong></p>
+      <div class="alert alert-secondary">
+        <code>{{ api_key }}</code>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
